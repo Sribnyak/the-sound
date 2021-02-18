@@ -7,17 +7,21 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
+
+    lateinit var textView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        findViewById<TextView>(R.id.textView).text = "Permission no"
+        textView = findViewById(R.id.textView)
+        textView.text = "Permission denied :("
 
         if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_DENIED) {
             ActivityCompat.requestPermissions(this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 MIC_PERMISSION_CODE
@@ -26,7 +30,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onMicPermissionGranted() {
-        findViewById<TextView>(R.id.textView).text = "Permission yes"
+        textView.text = "Permission granted!"
+        Thread {
+            var f1: Int
+            var f2: Int
+            while (true) {
+                f1 = Random.nextInt(210, 450)
+                f2 = Random.nextInt(350, 590)
+                textView.post { textView.text = "Permission granted!\nPeaks:\n$f1\n$f2" }
+                Thread.sleep(16 * 4)
+            }
+        }.start()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>,
