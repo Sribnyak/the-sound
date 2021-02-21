@@ -2,12 +2,15 @@ package com.sribnyak.thesound
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import kotlin.random.Random
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,14 +34,36 @@ class MainActivity : AppCompatActivity() {
 
     private fun onMicPermissionGranted() {
         textView.text = "Permission granted!"
+
         Thread {
-            var f1: Int
-            var f2: Int
+            val sampleRateInHz = DEFAULT_SAMPLE_RATE
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+
+            val bufferSizeInBytes = AudioRecord.getMinBufferSize(
+                sampleRateInHz, channelConfig, audioFormat) * 2
+            val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
+                sampleRateInHz, channelConfig, audioFormat, bufferSizeInBytes)
+            audioRecord.startRecording()
+
+            val bufferSizeInFrames = bufferSizeInBytes / 2
+            val bufferSizeInMillis = 1000 * bufferSizeInFrames / sampleRateInHz
+            val sleepTime = (16 * 4).toLong()
+            val updatesPerSecond = 1000 / sleepTime
+
+            val audioData = ShortArray(bufferSizeInFrames)
+            var maxValue: Short?
+            var volume: Int
+
             while (true) {
-                f1 = Random.nextInt(210, 450)
-                f2 = Random.nextInt(350, 590)
-                textView.post { textView.text = "Permission granted!\nPeaks:\n$f1\n$f2" }
-                Thread.sleep(16 * 4)
+                audioRecord.read(audioData, 0, audioData.size)
+                maxValue = audioData.maxOrNull()
+                volume = ((maxValue ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
+                textView.post { textView.text = "Permission granted!\nVolume: $volume" +
+                        "\n\nbufferSizeInFrames: $bufferSizeInFrames\n" +
+                        "bufferSizeInMillis: $bufferSizeInMillis\n" +
+                        "sleepTime: $sleepTime\nupdatesPerSecond: ~$updatesPerSecond" }
+                Thread.sleep(sleepTime)
             }
         }.start()
     }
@@ -51,5 +76,8 @@ class MainActivity : AppCompatActivity() {
             onMicPermissionGranted()
     }
 
-    companion object { private const val MIC_PERMISSION_CODE = 20567 }
+    companion object {
+        private const val MIC_PERMISSION_CODE = 20567
+        private const val DEFAULT_SAMPLE_RATE = 44100
+    }
 }
