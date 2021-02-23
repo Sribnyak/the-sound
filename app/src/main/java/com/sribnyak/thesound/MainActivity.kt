@@ -6,10 +6,12 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.SystemClock.uptimeMillis
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -42,28 +44,24 @@ class MainActivity : AppCompatActivity() {
 
             val bufferSizeInBytes = AudioRecord.getMinBufferSize(
                 sampleRateInHz, channelConfig, audioFormat) * 2
+            val bufferSizeInFrames = bufferSizeInBytes / 2
+
             val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
                 sampleRateInHz, channelConfig, audioFormat, bufferSizeInBytes)
             audioRecord.startRecording()
-
-            val bufferSizeInFrames = bufferSizeInBytes / 2
-            val bufferSizeInMillis = 1000 * bufferSizeInFrames / sampleRateInHz
-            val sleepTime = (16 * 4).toLong()
-            val updatesPerSecond = 1000 / sleepTime
-
             val audioData = ShortArray(bufferSizeInFrames)
-            var maxValue: Short?
-            var volume: Int
+
+            val sleepTime = (16 * 4).toLong()
+            var time = uptimeMillis()
+            var deltaTime: Long
 
             while (true) {
                 audioRecord.read(audioData, 0, audioData.size)
-                maxValue = audioData.maxOrNull()
-                volume = ((maxValue ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
-                textView.post { textView.text = "Permission granted!\nVolume: $volume" +
-                        "\n\nbufferSizeInFrames: $bufferSizeInFrames\n" +
-                        "bufferSizeInMillis: $bufferSizeInMillis\n" +
-                        "sleepTime: $sleepTime\nupdatesPerSecond: ~$updatesPerSecond" }
-                Thread.sleep(sleepTime)
+                textView.post { textView.text = "Permission granted!\n\nVolume: ${Engine.getVolume(audioData)}%" }
+
+                deltaTime = uptimeMillis() - time
+                Thread.sleep(max(3, sleepTime - deltaTime))
+                time = uptimeMillis()
             }
         }.start()
     }
@@ -79,5 +77,11 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val MIC_PERMISSION_CODE = 20567
         private const val DEFAULT_SAMPLE_RATE = 44100
+    }
+}
+
+object Engine {
+    fun getVolume(audioData: ShortArray): Int {
+        return ((audioData.maxOrNull() ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
     }
 }
