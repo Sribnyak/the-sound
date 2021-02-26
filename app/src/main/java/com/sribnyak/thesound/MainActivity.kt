@@ -6,7 +6,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
-import android.os.SystemClock.uptimeMillis
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -42,8 +41,9 @@ class MainActivity : AppCompatActivity() {
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
             val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-            val bufferSizeInBytes = AudioRecord.getMinBufferSize(
-                sampleRateInHz, channelConfig, audioFormat) * 2
+            val bufferSizeInBytes = max(
+                AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat),
+                sampleRateInHz / DEFAULT_UPDATE_RATE * 2)
             val bufferSizeInFrames = bufferSizeInBytes / 2
 
             val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
@@ -51,17 +51,11 @@ class MainActivity : AppCompatActivity() {
             audioRecord.startRecording()
             val audioData = ShortArray(bufferSizeInFrames)
 
-            val sleepTime = (16 * 4).toLong()
-            var time = uptimeMillis()
-            var deltaTime: Long
-
+            var volume: Int
             while (true) {
                 audioRecord.read(audioData, 0, audioData.size)
-                textView.post { textView.text = "Permission granted!\n\nVolume: ${Engine.getVolume(audioData)}%" }
-
-                deltaTime = uptimeMillis() - time
-                Thread.sleep(max(3, sleepTime - deltaTime))
-                time = uptimeMillis()
+                volume = ((audioData.maxOrNull() ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
+                textView.post { textView.text = "Permission granted!\n\nVolume: ${volume}%" }
             }
         }.start()
     }
@@ -77,11 +71,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val MIC_PERMISSION_CODE = 20567
         private const val DEFAULT_SAMPLE_RATE = 44100
-    }
-}
-
-object Engine {
-    fun getVolume(audioData: ShortArray): Int {
-        return ((audioData.maxOrNull() ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
+        private const val DEFAULT_UPDATE_RATE = 10
     }
 }
