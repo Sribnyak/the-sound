@@ -12,10 +12,15 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlin.math.*
 
+const val MIC_PERMISSION_CODE = 20567
+const val DEFAULT_SAMPLE_RATE = 44100
+const val DEFAULT_UPDATE_RATE = 20 // better 10
+
 class MainActivity : AppCompatActivity() {
 
-    lateinit var textView: TextView
+    lateinit var textView: TextView // required to update the textView outside onCreate method
 
+    // Entry point
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -28,78 +33,77 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 MIC_PERMISSION_CODE
-            )
+            ) // the result of the request is checked in onRequestPermissionsResult method
         } else onMicPermissionGranted()
     }
 
+    // if the mic permission is granted, this method will be called necessarily
     private fun onMicPermissionGranted() {
         textView.text = "Permission granted!"
 
-        Thread {
+        Thread { // create worker thread
             val sampleRateInHz = DEFAULT_SAMPLE_RATE
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
             val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-            val bufferSizeInBytes = max(
+            val bufferSizeInBytes = max( // min size or the size to reach the default update rate
                 AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat),
                 sampleRateInHz / DEFAULT_UPDATE_RATE * Short.SIZE_BYTES)
-            val bufferSizeInFrames = bufferSizeInBytes / Short.SIZE_BYTES
+            val numberOfSamples = bufferSizeInBytes / Short.SIZE_BYTES
 
             val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
                 sampleRateInHz, channelConfig, audioFormat, bufferSizeInBytes)
             audioRecord.startRecording()
-            val audioData = ShortArray(bufferSizeInFrames)
+            val audioData = ShortArray(numberOfSamples) // array to store data from the mic
 
-            val ftRe = DoubleArray(bufferSizeInFrames)
-            val ftIm = DoubleArray(bufferSizeInFrames)
-            val ftResult = Array(bufferSizeInFrames / 2) { Pair(0, 0.0) }
-            var volume: Int
-            var textToShow: CharSequence
-            while (true) {
-                audioRecord.read(audioData, 0, bufferSizeInFrames)
+            val ftRe = DoubleArray(numberOfSamples / 2) // the real part and
+            val ftIm = DoubleArray(numberOfSamples / 2) // the imaginary part of the DFT
+            val ftResult = Array(numberOfSamples / 2) { Pair(0, 0.0) } // required later
+            var volume: Int                                            // to show the results
+            var textToShow: CharSequence                               // of the DFT
 
+            // Discrete Fourier transform
+            fun calculateDFT() {
                 for (k in ftRe.indices) {
                     ftRe[k] = 0.0
                     ftIm[k] = 0.0
-                    for (n in audioData.indices) {
-                        ftRe[k] += audioData[n] * cos(2 * PI * k * n / bufferSizeInFrames)
-                        ftIm[k] += audioData[n] * sin(2 * PI * k * n / bufferSizeInFrames)
+                    for (n in 0 until numberOfSamples) {
+                        ftRe[k] += audioData[n] * cos(2 * PI * k * n / numberOfSamples)
+                        ftIm[k] += audioData[n] * sin(2 * PI * k * n / numberOfSamples)
                     }
-                    ftRe[k] /= bufferSizeInFrames.toDouble()
-                    ftIm[k] /= bufferSizeInFrames.toDouble()
                 }
-                for (k in ftResult.indices) {
+            }
+
+            while (true) {
+                audioRecord.read(audioData, 0, numberOfSamples) // waits until all is read
+                calculateDFT()
+
+                for (k in ftResult.indices) // fill the ftResult array
                     ftResult[k] = Pair(
-                        (1.0 * k * sampleRateInHz / bufferSizeInFrames).roundToInt(),
-                        sqrt(ftRe[k] * ftRe[k] + ftIm[k] * ftIm[k])
+                        (1.0 * k * sampleRateInHz / numberOfSamples).roundToInt(),    // frequency
+                        sqrt(ftRe[k] * ftRe[k] + ftIm[k] * ftIm[k]) / numberOfSamples // amplitude
                     )
-                }
                 ftResult.sortByDescending { it.second }
 
                 volume = ((audioData.maxOrNull() ?: 0).toDouble() / Short.MAX_VALUE * 100).roundToInt()
                 textToShow = "Permission granted!\n\nVolume: ${volume}%\n\nPeaks:"
-                for (i in 0..4) {
+                for (i in 0 until 5) { // 5 most intensive frequencies
                     volume = (ftResult[i].second / Short.MAX_VALUE * 1000).roundToInt()
                     if (volume < 1)
                         break
                     textToShow += "\n${ftResult[i].first} ($volume)"
                 }
-                textView.post { textView.text = textToShow }
+                textView.post { textView.text = textToShow } // run on the UI thread
             }
-        }.start()
+        }.start() // no need to save a reference to the worker thread, so just start it here
     }
 
+    // used for checking the result of the mic permission request
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>,
                                             grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == MIC_PERMISSION_CODE && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                grantResults[0] == PackageManager.PERMISSION_GRANTED)
             onMicPermissionGranted()
-    }
-
-    companion object {
-        private const val MIC_PERMISSION_CODE = 20567
-        private const val DEFAULT_SAMPLE_RATE = 44100
-        private const val DEFAULT_UPDATE_RATE = 30 // better 10
     }
 }
